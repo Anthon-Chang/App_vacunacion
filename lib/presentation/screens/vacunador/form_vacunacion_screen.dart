@@ -4,10 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../domain/entities/sector.dart';
 import '../../../domain/entities/vacunacion.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/sector_provider.dart';
 import '../../providers/vacunacion_provider.dart';
+import '../../../data/local/vacunacion_local.dart';
+import '../../../data/repositories/vacunacion_local_repository.dart';
+import '../../../data/repositories/sector_repository.dart';
+import '../../../data/services/sync_service.dart';
 
 class FormVacunacionScreen extends ConsumerStatefulWidget {
   final Vacunacion? vacunacionEditar;
@@ -21,7 +26,6 @@ class FormVacunacionScreen extends ConsumerStatefulWidget {
 class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  // Controladores
   final _propNombreCtrl = TextEditingController();
   final _propCedulaCtrl = TextEditingController();
   final _propTelefonoCtrl = TextEditingController();
@@ -30,12 +34,11 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
   final _vacunaCtrl = TextEditingController();
   final _observacionesCtrl = TextEditingController();
 
-  // Selecciones
   String _tipoMascota = 'perro';
   String _sexo = 'macho';
   String? _sectorSeleccionado;
+  List<Sector> _sectoresDisponibles = [];
 
-  // GPS y foto
   Position? _posicion;
   File? _foto;
   bool _cargandoGPS = false;
@@ -45,7 +48,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
 
   bool get _esEdicion => widget.vacunacionEditar != null;
 
-  // Vacunas disponibles
   final List<String> _vacunas = [
     'Antirrábica',
     'Parvovirus',
@@ -62,6 +64,27 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
   void initState() {
     super.initState();
     if (_esEdicion) _cargarDatosEdicion();
+    _cargarSectores();
+  }
+
+  Future<void> _cargarSectores() async {
+    try {
+      final usuario =
+          await ref.read(authRepositoryProvider).getCurrentUsuario();
+      final sectores = await ref
+          .read(sectorRepositoryProvider)
+          .obtenerTodos()
+          .first;
+      if (mounted) {
+        setState(() {
+          _sectoresDisponibles = sectores
+              .where((s) => usuario!.sectorIds.contains(s.id))
+              .toList();
+        });
+      }
+    } catch (e) {
+      print('Error cargando sectores: $e');
+    }
   }
 
   void _cargarDatosEdicion() {
@@ -90,7 +113,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
     super.dispose();
   }
 
-  // ── GPS ──────────────────────────────────────────
   Future<void> _obtenerUbicacion() async {
     setState(() { _cargandoGPS = true; _error = null; });
     try {
@@ -104,7 +126,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
     }
   }
 
-  // ── FOTO ─────────────────────────────────────────
   Future<void> _tomarFoto() async {
     try {
       final repo = ref.read(vacunacionRepositoryProvider);
@@ -115,7 +136,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
     }
   }
 
-  // ── GUARDAR ──────────────────────────────────────
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
     if (_posicion == null && !_esEdicion) {
@@ -130,11 +150,16 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
     setState(() { _loading = true; _error = null; });
 
     try {
-      final repo = ref.read(vacunacionRepositoryProvider);
-      final usuario = await ref.read(authRepositoryProvider).getCurrentUsuario();
+      final syncService = SyncService();
+      final tieneConexion = await syncService.tieneConexion();
+      print('=== TIENE CONEXION: $tieneConexion ===');
+
+      final usuario =
+          await ref.read(authRepositoryProvider).getCurrentUsuario();
+      print('=== USUARIO: ${usuario?.uid} ===');
 
       if (_esEdicion) {
-        // Solo actualizar campos editables
+        final repo = ref.read(vacunacionRepositoryProvider);
         await repo.actualizar(widget.vacunacionEditar!.id!, {
           'propietarioNombre': _propNombreCtrl.text.trim(),
           'propietarioCedula': _propCedulaCtrl.text.trim(),
@@ -146,7 +171,9 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
           'vacunaAplicada': _vacunaSeleccionada,
           'observaciones': _observacionesCtrl.text.trim(),
         });
-      } else {
+      } else if (tieneConexion) {
+        print('=== GUARDANDO ONLINE ===');
+        final repo = ref.read(vacunacionRepositoryProvider);
         final vacunacion = Vacunacion(
           propietarioNombre: _propNombreCtrl.text.trim(),
           propietarioCedula: _propCedulaCtrl.text.trim(),
@@ -165,11 +192,36 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
           sincronizado: true,
         );
         await repo.registrar(vacunacion, _foto);
+      } else {
+        print('=== GUARDANDO OFFLINE ===');
+        final localRepo = VacunacionLocalRepository();
+        final vacunacionLocal = VacunacionLocal(
+          propietarioNombre: _propNombreCtrl.text.trim(),
+          propietarioCedula: _propCedulaCtrl.text.trim(),
+          propietarioTelefono: _propTelefonoCtrl.text.trim(),
+          tipoMascota: _tipoMascota,
+          nombreMascota: _mascNombreCtrl.text.trim(),
+          edadAproximada: _edadCtrl.text.trim(),
+          sexo: _sexo,
+          vacunaAplicada: _vacunaSeleccionada ?? '',
+          observaciones: _observacionesCtrl.text.trim(),
+          fotoPath: _foto?.path,
+          latitud: _posicion!.latitude,
+          longitud: _posicion!.longitude,
+          fechaHora: DateTime.now(),
+          sectorId: _sectorSeleccionado ?? '',
+          vacunadorId: usuario?.uid ?? '',
+          sincronizado: false,
+        );
+        final id = await localRepo.guardar(vacunacionLocal);
+        print('=== GUARDADO OFFLINE CON ID: $id ===');
       }
 
       setState(() => _exito = true);
-    } catch (e) {
-      setState(() => _error = 'Error al guardar el registro. Intenta de nuevo.');
+    } catch (e, stack) {
+      print('=== ERROR: $e ===');
+      print('=== STACK: $stack ===');
+      setState(() => _error = 'Error: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -214,7 +266,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
                     const SizedBox(height: 16),
                     _buildSeccion('Datos de la mascota', Icons.pets),
                     _buildCard([
-                      // Tipo mascota
                       const Text('Tipo de mascota *',
                           style: TextStyle(fontSize: 13, color: Colors.grey)),
                       const SizedBox(height: 8),
@@ -247,7 +298,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
                           Icons.cake_outlined,
                           hint: 'Ej: 2 años, 6 meses'),
                       const SizedBox(height: 14),
-                      // Sexo
                       const Text('Sexo *',
                           style: TextStyle(fontSize: 13, color: Colors.grey)),
                       const SizedBox(height: 8),
@@ -276,7 +326,7 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
                     _buildSeccion('Vacuna aplicada', Icons.vaccines),
                     _buildCard([
                       DropdownButtonFormField<String>(
-                        initialValue: _vacunaSeleccionada,
+                        value: _vacunaSeleccionada,
                         decoration: const InputDecoration(
                           labelText: 'Vacuna *',
                           prefixIcon: Icon(Icons.vaccines_outlined),
@@ -302,7 +352,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
                       ),
                     ]),
 
-                    // Sector (solo en nuevo registro)
                     if (!_esEdicion) ...[
                       const SizedBox(height: 16),
                       _buildSeccion('Sector', Icons.map),
@@ -317,7 +366,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
                     _buildSeccion('Ubicación GPS *', Icons.gps_fixed),
                     _buildCard([_buildGPS()]),
 
-                    // Error
                     if (_error != null) ...[
                       const SizedBox(height: 12),
                       Container(
@@ -336,8 +384,8 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(_error!,
-                                  style:
-                                      const TextStyle(color: AppTheme.error)),
+                                  style: const TextStyle(
+                                      color: AppTheme.error)),
                             ),
                           ],
                         ),
@@ -367,8 +415,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
             ),
     );
   }
-
-  // ── WIDGETS AUXILIARES ───────────────────────────
 
   Widget _buildSeccion(String titulo, IconData icono) {
     return Padding(
@@ -422,34 +468,26 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
   }
 
   Widget _buildSelectorSector() {
-    final usuarioAsync = ref.watch(currentUsuarioProvider);
-    final sectoresAsync = ref.watch(sectoresStreamProvider);
-
-    return usuarioAsync.when(
-      loading: () => const CircularProgressIndicator(),
-      error: (_, __) => const Text('Error al cargar sectores'),
-      data: (usuario) => sectoresAsync.when(
-        loading: () => const CircularProgressIndicator(),
-        error: (_, __) => const Text('Error al cargar sectores'),
-        data: (sectores) {
-          final misSectores = sectores
-              .where((s) => usuario!.sectorIds.contains(s.id))
-              .toList();
-          return DropdownButtonFormField<String>(
-            initialValue: _sectorSeleccionado,
-            decoration: const InputDecoration(
-              labelText: 'Sector *',
-              prefixIcon: Icon(Icons.map_outlined),
-            ),
-            items: misSectores
-                .map((s) =>
-                    DropdownMenuItem(value: s.id, child: Text(s.nombre)))
-                .toList(),
-            onChanged: (v) => setState(() => _sectorSeleccionado = v),
-            validator: (v) => v == null ? 'Selecciona un sector' : null,
-          );
-        },
+    if (_sectoresDisponibles.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(8),
+        child: Text(
+          'Cargando sectores...',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+    return DropdownButtonFormField<String>(
+      value: _sectorSeleccionado,
+      decoration: const InputDecoration(
+        labelText: 'Sector *',
+        prefixIcon: Icon(Icons.map_outlined),
       ),
+      items: _sectoresDisponibles
+          .map((s) => DropdownMenuItem(value: s.id, child: Text(s.nombre)))
+          .toList(),
+      onChanged: (v) => setState(() => _sectorSeleccionado = v),
+      validator: (v) => v == null ? 'Selecciona un sector' : null,
     );
   }
 
@@ -479,11 +517,9 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
             child: const Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.camera_alt_outlined,
-                    size: 40, color: Colors.grey),
+                Icon(Icons.camera_alt_outlined, size: 40, color: Colors.grey),
                 SizedBox(height: 8),
-                Text('Sin fotografía',
-                    style: TextStyle(color: Colors.grey)),
+                Text('Sin fotografía', style: TextStyle(color: Colors.grey)),
               ],
             ),
           ),
@@ -527,18 +563,14 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
                   ],
                 ),
                 const SizedBox(height: 6),
+                Text('Lat: ${_posicion!.latitude.toStringAsFixed(6)}',
+                    style: const TextStyle(fontSize: 13)),
+                Text('Lng: ${_posicion!.longitude.toStringAsFixed(6)}',
+                    style: const TextStyle(fontSize: 13)),
                 Text(
-                  'Lat: ${_posicion!.latitude.toStringAsFixed(6)}',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                Text(
-                  'Lng: ${_posicion!.longitude.toStringAsFixed(6)}',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                Text(
-                  'Precisión: ${_posicion!.accuracy.toStringAsFixed(1)} m',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
+                    'Precisión: ${_posicion!.accuracy.toStringAsFixed(1)} m',
+                    style:
+                        const TextStyle(fontSize: 12, color: Colors.grey)),
               ],
             ),
           ),
@@ -578,9 +610,7 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
                 color: AppTheme.success, size: 80),
             const SizedBox(height: 16),
             Text(
-              _esEdicion
-                  ? '¡Registro actualizado!'
-                  : '¡Vacunación registrada!',
+              _esEdicion ? '¡Registro actualizado!' : '¡Vacunación registrada!',
               style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -634,7 +664,6 @@ class _FormVacunacionScreenState extends ConsumerState<FormVacunacionScreen> {
   }
 }
 
-// Widget botón de selección tipo/sexo
 class _BotonSeleccion extends StatelessWidget {
   final String label;
   final bool seleccionado;
@@ -654,9 +683,7 @@ class _BotonSeleccion extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: seleccionado
-              ? const Color(0xFF4A148C)
-              : Colors.grey.shade100,
+          color: seleccionado ? const Color(0xFF4A148C) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: seleccionado
@@ -669,9 +696,8 @@ class _BotonSeleccion extends StatelessWidget {
             label,
             style: TextStyle(
               color: seleccionado ? Colors.white : Colors.grey.shade700,
-              fontWeight: seleccionado
-                  ? FontWeight.bold
-                  : FontWeight.normal,
+              fontWeight:
+                  seleccionado ? FontWeight.bold : FontWeight.normal,
             ),
           ),
         ),

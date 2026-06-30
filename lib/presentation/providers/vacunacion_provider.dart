@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/repositories/vacunacion_repository.dart';
 import '../../domain/entities/vacunacion.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../data/services/sync_service.dart';
+import '../../data/repositories/vacunacion_local_repository.dart';
 
 final vacunacionRepositoryProvider = Provider<VacunacionRepository>((ref) {
   return VacunacionRepository();
@@ -102,4 +104,17 @@ final estadisticasPorSectorProvider =
       pendientesSincronizacion: pendientes,
     );
   });
+});
+
+final syncServiceProvider = Provider<SyncService>((ref) => SyncService());
+
+final pendientesSyncProvider = FutureProvider<int>((ref) async {
+  final localRepo = VacunacionLocalRepository();
+  return localRepo.cantidadPendientes();
+});
+
+// Auto-sincronizar cuando hay conexión
+final autoSyncProvider = StreamProvider<int>((ref) {
+  final syncService = ref.read(syncServiceProvider);
+  return syncService.escucharYSincronizar();
 });
