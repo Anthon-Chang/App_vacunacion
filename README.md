@@ -8,37 +8,45 @@ Aplicacion movil desarrollada en Flutter con Firebase para gestionar campanas de
 
 ### Autenticacion
 
-| Login | Recuperar contrasena |
-|-------|---------------------|
-| ![Login](screenshots/login.jpeg) | ![Recuperar](screenshots/recuperar.jpeg) |
+<p align="center">
+  <img src="screenshots/login.jpeg" width="250"/>
+  <img src="screenshots/recuperar.jpeg" width="250"/>
+</p>
 
 ### Coordinador de Campana
 
-| Dashboard | Sectores | Nuevo sector |
-|-----------|----------|--------------|
-| ![Dashboard Campana](screenshots/dashboard_campana.jpeg) | ![Sectores](screenshots/sectores.jpeg) | ![Nuevo Sector](screenshots/nuevo_sector.jpeg) |
+<p align="center">
+  <img src="screenshots/dashboard_campana.jpeg" width="250"/>
+  <img src="screenshots/sectores.jpeg" width="250"/>
+  <img src="screenshots/nuevo_sector.jpeg" width="250"/>
+</p>
 
-| Coordinadores | Nuevo Coordinador |
-|---------------|-------------------|
-| ![Coordinadores](screenshots/coordinadores.jpeg) | ![Nuevo Coordinador](screenshots/nuevo_coordinador.jpeg) |
+<p align="center">
+  <img src="screenshots/coordinadores.jpeg" width="250"/>
+  <img src="screenshots/nuevo_coordinador.jpeg" width="250"/>
+</p>
 
 ### Coordinador de Brigada
 
-| Dashboard | Registros | Nuevo Vacunador |
-|-----------|-----------|-----------------|
-| ![Dashboard Brigada](screenshots/dashboard_brigada.jpeg) | ![Registros](screenshots/registros.jpeg) | ![Nuevo Vacunador](screenshots/nuevo_vacunador.jpeg) |
+<p align="center">
+  <img src="screenshots/dashboard_brigada.jpeg" width="250"/>
+  <img src="screenshots/registros.jpeg" width="250"/>
+  <img src="screenshots/nuevo_vacunador.jpeg" width="250"/>
+</p>
 
 ### Vacunador
 
-| Dashboard | Nueva Vacunacion |
-|-----------|-----------------|
-| ![Dashboard Vacunador](screenshots/dashboard_vacunador.jpeg) | ![Nueva Vacunacion](screenshots/nueva_vacunacion.jpeg) |
+<p align="center">
+  <img src="screenshots/dashboard_vacunador.jpeg" width="250"/>
+  <img src="screenshots/nueva_vacunacion.jpeg" width="250"/>
+</p>
 
 ### Dashboard
 
-| Estadisticas generales | Graficas por sector |
-|------------------------|---------------------|
-| ![Dashboard General](screenshots/dashboard_general.jpeg) | ![Graficas](screenshots/graficas.jpeg) |
+<p align="center">
+  <img src="screenshots/dashboard_general.jpeg" width="250"/>
+  <img src="screenshots/graficas.jpeg" width="250"/>
+</p>
 
 ---
 
